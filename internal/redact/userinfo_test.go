@@ -57,3 +57,30 @@ func TestURLUserinfoIsNoEmail(t *testing.T) {
 		t.Errorf("model's: %q", out)
 	}
 }
+
+// A password written with a raw @ ends at the last @ before the host, as
+// net/url and redis-cli read it. redis://:root@agent2026@123@11.22.33.44:6379
+// went with only root masked and agent2026@123 as written.
+func TestURLPasswordWithAt(t *testing.T) {
+	Forget()
+	t.Cleanup(Forget)
+	ph := func(kind string) string { return `\{\{` + kind + `_[a-z2-7]{8}\}\}` }
+	for _, o := range []Options{{Secrets: true}, {Secrets: true, Personal: true, Shape: true}} {
+		for _, c := range []struct{ in, want string }{
+			// the report's literal string
+			{"redis://:root@agent2026@123@11.22.33.44:6379", `^redis://:` + ph("PASSWORD") + `@11\.22\.33\.44:6379$`},
+			{"postgres://app:{{PASSWORD_mwjfcrhb}}@db.acme-corp.cn:5432/x", `^postgres://app:` + ph("PASSWORD") + `@db\.acme-corp\.cn:5432/x$`},
+			// an @ past the host is not the password's
+			{"redis://:{{PASSWORD_qbvpsqzw}}@cache.acme-corp.cn:6379 mail rina.k@fastmail.com", `^redis://:` + ph("PASSWORD") + `@cache\.acme-corp\.cn:6379 mail `},
+			{"https://deploy:{{PASSWORD_45nhbgvq}}@git.acme-corp.cn/?cc=rina.k@fastmail.com", `^https://deploy:` + ph("PASSWORD") + `@git\.acme-corp\.cn/\?cc=`},
+		} {
+			out, _ := Mask(c.in, o)
+			if !regexp.MustCompile(c.want).MatchString(out) || strings.Contains(out, "s3cr3t") || strings.Contains(out, "agent2026") || strings.Contains(out, "p@ss") {
+				t.Errorf("%+v: %q went as %q", o, c.in, out)
+			}
+			if strings.Contains(c.in, "fastmail") && strings.Contains(out, "rina.k") != !o.Personal {
+				t.Errorf("%+v: the address after the URL: %q", o, out)
+			}
+		}
+	}
+}

@@ -184,8 +184,11 @@ var rules = append([]rule{
 		markers: []string{"hf_", "gsk_", "xai-", "npm_", "pypi-", "dop_v1_", "SG."}, bound: tokenCh},
 	{kind: "TOKEN", re: lazyre.New(`eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}`), markers: []string{"eyJ"}, bound: tokenCh},
 	// the password of user:password@host, or of :password@host as a Redis
-	// URL has it with no user
-	{kind: "PASSWORD", re: lazyre.New(`[A-Za-z][A-Za-z0-9+.-]*://[^\s:@/?#"'<>]*:([^\s@/?#"'<>]{3,})@`), markers: []string{"://"}, ok: notAVariable, at: hiddenInURL},
+	// URL has it with no user. A password written with a raw @ in it ends
+	// at the last @ before the host, as net/url and redis-cli read it:
+	// redis://:root@agent2026@123@11.22.33.44:6379 went with only root
+	// masked and agent2026@123 as written.
+	{kind: "PASSWORD", re: lazyre.New(`[A-Za-z][A-Za-z0-9+.-]*://[^\s:@/?#"'<>]*:([^\s/?#"'<>]{3,})@`), markers: []string{"://"}, ok: notAVariable, at: hiddenInURL},
 	// password = …, API_KEY: "…", as .env files and configs have them
 	{kind: "SECRET", re: lazyre.New(`(?i)[A-Za-z0-9_.-]*(?:` + secretNames.pattern() + `)[A-Za-z0-9_.-]*` + quote + `[ \t]*[:=][ \t]*` + quote + `(` + secretCh + `{8,})`),
 		markers: secretNames.markers(), ok: secretValue, at: fieldAt, field: true},
